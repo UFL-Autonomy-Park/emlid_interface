@@ -13,7 +13,7 @@ def generate_launch_description():
         try:
             data_loaded = yaml.safe_load(stream)
             robot_namespace = '/'+ data_loaded['robot_namespace']
-
+            navsat_link = data_loaded['robot_namespace'] + '/navsat_link'
         except yaml.YAMLError as exc:
             print(exc)
 
@@ -25,6 +25,7 @@ def generate_launch_description():
             name='emlid_interface',
             parameters=[
                 {'baud_rate': 57600},
+                {'navsat_link_id': navsat_link},
             ],
             remappings=[
                 ('rtk/fix', 'sensors/gps/fix'),

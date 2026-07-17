@@ -1,39 +1,41 @@
 #!/usr/bin/env python3
 
-#ROS2 library imports
-import rclpy
-from rclpy.node import Node
+# ROS2 library imports
+import math
 
-#System imports - not always used but necessary sometimes
+# System imports - not always used but necessary sometimes
 import os
 import sys
-import math
+
 import numpy as np
-
-from nmea import input_stream
-
-#Note, for eloquent, tf_transformations is not available
-from sensor_msgs.msg import NavSatFix
+import rclpy
 from geodesy import utm
+from nmea import input_stream
+from rclpy.node import Node
 
-#Subscribe to IMU, read GPS from port, publish GPS
-#and publish local coordinates and orientation
+# Note, for eloquent, tf_transformations is not available
+from sensor_msgs.msg import NavSatFix
 
-#Topics In
-#/imu/data
+# Subscribe to IMU, read GPS from port, publish GPS
+# and publish local coordinates and orientation
 
-#Topics Out
-#/rtk/fix
-#/local/pose
+# Topics In
+# /imu/data
+
+# Topics Out
+# /rtk/fix
+# /local/pose
+
 
 class EmlidInterface(Node):
     def __init__(self):
-        super().__init__('emlid_interface_node')
+        super().__init__("emlid_interface_node")
 
-        self.rtk_pub_ = self.create_publisher(NavSatFix, 'rtk/fix', 10)
-        self.utm_pub_ = self.create_publisher(NavSatFix, 'rtk/utm', 10)
+        self.rtk_pub_ = self.create_publisher(NavSatFix, "rtk/fix", 1)
+        self.utm_pub_ = self.create_publisher(NavSatFix, "rtk/utm", 1)
 
-        self.declare_parameter('baud_rate', 57600)
+        self.declare_parameter("baud_rate", 57600)
+        self.declare_parameter("navsat_link_id", "navsat_link")
         # self.declare_parameter('origin_easting', 368305.0700699703)
         # self.declare_parameter('origin_northing', 3278357.100811797)
         # self.declare_parameter('origin_rotation', -0.6021965548550632)
@@ -41,31 +43,35 @@ class EmlidInterface(Node):
         # self.origin_easting = self.get_parameter('origin_easting').value
         # self.origin_northing = self.get_parameter('origin_northing').value
         # self.origin_rotation = self.get_parameter('origin_rotation').value
-        baud = self.get_parameter('baud_rate').value
+        baud = self.get_parameter("baud_rate").value
+        self.navsat_link_id = (
+            self.get_parameter("navsat_link_id").get_parameter_value().string_value
+        )
 
         self.gps_init = False
         # self.imu_data = Imu()
 
         self.port = input_stream.GenericInputStream()
         self.port.baud = baud
-        self.stream = input_stream.GenericInputStream.open_stream('/dev/emlid')
+        self.stream = input_stream.GenericInputStream.open_stream("/dev/emlid")
 
         self.get_logger().info("Connected to emlid and streaming data.")
 
-        #Set the timer period and define the timer function that loops at the desired rate
-        time_period = 1/10
+        # Set the timer period and define the timer function that loops at the desired rate
+        time_period = 1 / 50
         self.timer = self.create_timer(time_period, self.timer_callback)
 
     def timer_callback(self):
         recv = self.stream.get_line()
-        self.parse(str(recv))
+        if not recv == "":
+            self.parse(str(recv))
 
     def parse(self, msg):
         msg_good = False
-        data = msg.split(',')
+        data = msg.split(",")
 
         header = data[0]
-        #print(header)
+        # print(header)
 
         if header == "b'$GNGGA":
             self.gps_init = True
@@ -100,19 +106,19 @@ class EmlidInterface(Node):
         #     crc = data[12]
 
         if msg_good:
-            if lat != '' and lon != '':
-                deg = int(round(float(lat)/100,0))
-                dec_min = (float(lat)%100)/60
-                lat = deg+dec_min
+            if lat != "" and lon != "":
+                deg = int(round(float(lat) / 100, 0))
+                dec_min = (float(lat) % 100) / 60
+                lat = deg + dec_min
 
-                deg = int(round(float(lon)/100,0))
-                dec_min = (float(lon)%100)/60.0
-                lon = deg+dec_min
+                deg = int(round(float(lon) / 100, 0))
+                dec_min = (float(lon) % 100) / 60.0
+                lon = deg + dec_min
 
                 if e_w == "W":
                     lon = -lon
 
-                gps_pos = [lat,lon]
+                gps_pos = [lat, lon]
                 self.utm_transform(gps_pos, header, data)
                 self.pack_navsatfix(gps_pos, header, data)
                 # self.local_transform(gps_pos, float(data[9]))
@@ -120,7 +126,7 @@ class EmlidInterface(Node):
     def pack_navsatfix(self, pos, header, data):
         navsat_msg = NavSatFix()
         navsat_msg.header.stamp = self.get_clock().now().to_msg()
-        navsat_msg.header.frame_id = "navsat_link"
+        navsat_msg.header.frame_id = self.navsat_link_id
 
         if header == "b'$GNGGA":
             gps_qual = int(data[6])
@@ -267,6 +273,7 @@ class EmlidInterface(Node):
     #
     #     return angles;
 
+
 def main(args=None):
     rclpy.init(args=args)
 
@@ -275,5 +282,6 @@ def main(args=None):
     emlid_interface.destroy_node()
     rclpy.shutdown()
 
-if __name__ == 'main':
+
+if __name__ == "main":
     main()
