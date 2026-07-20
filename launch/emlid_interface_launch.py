@@ -1,35 +1,30 @@
-import os
-import yaml
-from launch import LaunchDescription
-from launch.substitutions import PathJoinSubstitution
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
-from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+
 
 def generate_launch_description():
-    file_path = os.path.expanduser("~/robot_param.yaml")
-    with open(file_path, "r") as stream:
-        try:
-            data_loaded = yaml.safe_load(stream)
-            robot_namespace = '/'+ data_loaded['robot_namespace']
-            navsat_link = data_loaded['robot_namespace'] + '/navsat_link'
-        except yaml.YAMLError as exc:
-            print(exc)
+    params_file = LaunchConfiguration("params_file")
+    emlid_interface_param_file = PathJoinSubstitution(
+        [FindPackageShare("emlid_interface"), "param", "emlid_interface_param.yaml"]
+    )
 
-    return LaunchDescription([
-        Node(
-            package='emlid_interface',
-            namespace=robot_namespace,
-            executable='emlid_interface_node',
-            name='emlid_interface',
-            parameters=[
-                {'baud_rate': 57600},
-                {'navsat_link_id': navsat_link},
-            ],
-            remappings=[
-                ('rtk/fix', 'sensors/gps/fix'),
-                ('rtk/utm', 'sensors/gps/utm'),
-            ]
-        ),
-    ])
+    return LaunchDescription(
+        [
+            DeclareLaunchArgument(
+                "params_file", default_value=emlid_interface_param_file
+            ),
+            Node(
+                package="emlid_interface",
+                executable="emlid_interface_node",
+                name="emlid_interface",
+                parameters=[params_file],
+                remappings=[
+                    ("rtk/fix", "sensors/gps/fix"),
+                ],
+            ),
+        ]
+    )
